@@ -28,24 +28,24 @@ class ScurityApp extends StatelessWidget {
             useMaterial3: true,
             brightness: Brightness.light,
             colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0育1A73E8),
+              seedColor: const Color(0xFF1A73E8),
               brightness: Brightness.light,
-              background: const Color(0育F8F9FA),
+              background: const Color(0xFFF8F9FA),
               surface: Colors.white,
             ),
-            scaffoldBackgroundColor: const Color(0育F8F9FA),
+            scaffoldBackgroundColor: const Color(0xFFF8F9FA),
           ),
           // Tema Gelap (Futuristic Cyberpunk Slate)
           darkTheme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.dark,
             colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0育00E5FF),
+              seedColor: const Color(0xFF00E5FF),
               brightness: Brightness.dark,
-              background: const Color(0育0B0E14),
-              surface: const Color(0育161B22),
+              background: const Color(0xFF0B0E14),
+              surface: const Color(0xFF161B22),
             ),
-            scaffoldBackgroundColor: const Color(0育0B0E14),
+            scaffoldBackgroundColor: const Color(0xFF0B0E14),
           ),
           home: const DashboardScreen(),
         );
@@ -80,7 +80,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     client.port = 1883;
     client.keepAlivePeriod = 20;
     client.onDisconnected = () {
-      setState(() => connectionState = 'Terputus');
+      if (mounted) setState(() => connectionState = 'Terputus');
     };
 
     final connMess = MqttConnectMessage()
@@ -90,16 +90,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     client.connectionMessage = connMess;
 
     try {
-      setState(() => connectionState = 'Menghubungkan...');
+      if (mounted) setState(() => connectionState = 'Menghubungkan...');
       await client.connect();
     } catch (e) {
-      setState(() => connectionState = 'Gagal Terhubung');
+      if (mounted) setState(() => connectionState = 'Gagal Terhubung');
       client.disconnect();
       return;
     }
 
     if (client.connectionStatus!.state == MqttConnectionState.connected) {
-      setState(() => connectionState = 'Terhubung');
+      if (mounted) setState(() => connectionState = 'Terhubung');
       
       // Menyesuaikan dengan topik dari program ESP32 kamu
       client.subscribe('sistem/log', MqttQos.atMostOnce);
@@ -111,23 +111,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final String payload = MqttPublishPayload.bytesToStringAsString(recMess.payload.message);
         final String topic = c[0].topic;
 
-        setState(() {
-          if (topic == 'sistem/cahaya') {
-            cahayaStatus = payload.toUpperCase();
-          } else {
-            // Menampung log & notifikasi dari ESP32
-            bool isAlert = topic == 'sistem/notifikasi' || payload.contains("PENYUSUP");
-            logs.insert(0, {
-              'time': "${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}",
-              'msg': payload,
-              'isAlert': isAlert
-            });
-            if (logs.length > 30) logs.removeLast();
+        if (mounted) {
+          setState(() {
+            if (topic == 'sistem/cahaya') {
+              cahayaStatus = payload.toUpperCase();
+            } else {
+              // Menampung log & notifikasi dari ESP32
+              bool isAlert = topic == 'sistem/notifikasi' || payload.contains("PENYUSUP");
+              logs.insert(0, {
+                'time': "${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}",
+                'msg': payload,
+                'isAlert': isAlert
+              });
+              if (logs.length > 30) logs.removeLast();
 
-            if (payload == "SYSTEM ARMED") isSystemArmed = true;
-            if (payload == "SYSTEM DISARMED") isSystemArmed = false;
-          }
-        });
+              if (payload == "SYSTEM ARMED") isSystemArmed = true;
+              if (payload == "SYSTEM DISARMED") isSystemArmed = false;
+            }
+          });
+        }
       });
     }
   }
@@ -319,7 +321,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: isDark ? const Color(0育05070A) : Colors.grey[200],
+                  color: isDark ? const Color(0xFF05070A) : Colors.grey[200],
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: logs.isEmpty
