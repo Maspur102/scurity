@@ -1,0 +1,46 @@
+name: Build Scurity Flutter APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout kode repository dari GitHub
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Setup Java JDK versi 17 (Standar kompatibilitas gradle kts terbaru)
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+          cache: 'gradle'
+
+      # 3. Setup Flutter Environment
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      # 4. Ambil semua dependensi project
+      - name: Install Dependencies
+        run: flutter pub get
+
+      # 5. Build aplikasi ke format APK Release
+      - name: Build Application APK
+        run: flutter build apk --release
+
+      # 6. Upload output file .apk ke Github Artifacts agar bisa kamu download langsung
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Scurity-App-Release
+          path: build/app/outputs/flutter-apk/app-release.apk

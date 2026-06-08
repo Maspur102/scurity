@@ -1,0 +1,22 @@
+name: scurity
+description: "A Smart Home Security Control Application"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  # Package MQTT Client resmi untuk komunikasi dengan ESP32
+  mqtt_client: ^10.3.0 
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material3: true
