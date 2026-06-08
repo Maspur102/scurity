@@ -1,8 +1,23 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// Logika aman untuk membaca versi aplikasi (Kebal error di GitHub Actions)
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.inputStream().use { stream ->
+        localProperties.load(stream)
+    }
+}
+
+val flutterVersionCode = localProperties.getProperty("flutter.versionCode") ?: "1"
+val flutterVersionName = localProperties.getProperty("flutter.versionName") ?: "1.0.0"
 
 android {
     namespace = "com.example.scurity"
@@ -19,10 +34,11 @@ android {
 
     defaultConfig {
         applicationId = "com.example.scurity"
-        // Minimal SDK 21 agar MqttClient berjalan lancar tanpa error network
+        // Minimal SDK 21 agar MqttClient berjalan lancar
         minSdk = 21 
         targetSdk = flutter.targetSdkVersion
-        versionCode = flutterVersionCode.toInteger()
+        // Perbaikan di baris ini menggunakan toInt()
+        versionCode = flutterVersionCode.toInt()
         versionName = flutterVersionName
     }
 
