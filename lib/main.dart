@@ -84,13 +84,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       client.disconnect();
     }
 
-    // Client ID unik untuk menghindari tabrakan di broker publik
     String clientId = 'app_scurity_${DateTime.now().millisecond}';
     
-    // --- KODE ANTI BLOKIR ISP (MENGGUNAKAN WEBSOCKET) ---
-    client = MqttServerClient('broker.hivemq.com', clientId);
-    client.useWebSocket = true; // Menyamar menjadi lalu lintas web
-    client.port = 8000;         // Port publik WebSocket HiveMQ
+    // --- PERBAIKAN FATAL: Menambahkan ws:// dan /mqtt ---
+    client = MqttServerClient('ws://broker.hivemq.com/mqtt', clientId);
+    client.useWebSocket = true; 
+    client.port = 8000;         
     client.keepAlivePeriod = 60;
     _isClientInitialized = true;
 
