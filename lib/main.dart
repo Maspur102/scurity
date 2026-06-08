@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 
-// 1. Default diubah menjadi ThemeMode.light agar langsung terang saat dibuka
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
 void main() {
@@ -69,7 +68,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String cahayaStatus = 'Memuat...';
   List<Map<String, dynamic>> logs = [];
 
-  // Variabel untuk animasi tombol membal
   double _armScale = 1.0;
   double _disarmScale = 1.0;
 
@@ -86,27 +84,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
       client.disconnect();
     }
 
-    String clientId = 'scurity_app_${DateTime.now().millisecondsSinceEpoch}';
+    // Client ID unik untuk menghindari tabrakan di broker publik
+    String clientId = 'app_scurity_${DateTime.now().millisecond}';
+    
+    // --- KODE ANTI BLOKIR ISP (MENGGUNAKAN WEBSOCKET) ---
     client = MqttServerClient('broker.hivemq.com', clientId);
-    client.port = 1883;
-    client.keepAlivePeriod = 20;
+    client.useWebSocket = true; // Menyamar menjadi lalu lintas web
+    client.port = 8000;         // Port publik WebSocket HiveMQ
+    client.keepAlivePeriod = 60;
     _isClientInitialized = true;
 
     client.onDisconnected = () {
-      if (mounted) setState(() => connectionState = 'Terputus');
+      if (mounted) setState(() => connectionState = 'Terputus (Disconnected)');
     };
 
     final connMess = MqttConnectMessage()
         .withClientIdentifier(clientId)
-        .startClean()
-        .withWillQos(MqttQos.atLeastOnce);
+        .startClean();
+        
     client.connectionMessage = connMess;
 
     try {
       if (mounted) setState(() => connectionState = 'Menghubungkan...');
       await client.connect();
+    } on SocketException catch (e) {
+      if (mounted) {
+        setState(() => connectionState = 'Diblokir Jaringan');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Koneksi ditolak jaringan! Coba ganti antara WiFi atau Data Seluler.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+      client.disconnect();
+      return;
     } catch (e) {
-      if (mounted) setState(() => connectionState = 'Gagal Terhubung');
+      if (mounted) {
+        setState(() => connectionState = 'Gagal Terhubung');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error Detail: $e'),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(seconds: 10),
+          ),
+        );
+      }
       client.disconnect();
       return;
     }
@@ -164,7 +188,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  // Tombol Pintar dengan Animasi
   Widget _buildAnimatedButton({
     required String title,
     required IconData icon,
@@ -238,13 +261,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           )
         ],
       ),
-      // Membungkus Body dengan RefreshIndicator dan CustomScrollView
       body: RefreshIndicator(
         onRefresh: _connectMqtt,
         color: isDark ? Colors.cyanAccent : Colors.blueAccent,
         backgroundColor: colorScheme.surface,
         child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(), // Wajib agar bisa di-scroll & di-refresh walau konten sedikit
+          physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
@@ -253,7 +275,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(height: 10),
-                    // Hub Status Card
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 400),
                       padding: const EdgeInsets.all(24),
@@ -310,7 +331,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // LDR Sensor Card
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -334,22 +354,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Baris Tombol Kontrol
                     Row(
                       children: [
-                        _buildAnimatedButton(
-                          title: 'ARM SYSTEM',
-                          icon: Icons.lock_outline_rounded,
-                          activeColor: Colors.green,
-                          isArmButton: true,
-                        ),
+                        _buildAnimatedButton(title: 'ARM SYSTEM', icon: Icons.lock_outline_rounded, activeColor: Colors.green, isArmButton: true),
                         const SizedBox(width: 12),
-                        _buildAnimatedButton(
-                          title: 'DISARM SYSTEM',
-                          icon: Icons.lock_open_rounded,
-                          activeColor: Colors.red,
-                          isArmButton: false,
-                        ),
+                        _buildAnimatedButton(title: 'DISARM SYSTEM', icon: Icons.lock_open_rounded, activeColor: Colors.red, isArmButton: false),
                       ],
                     ),
                     const SizedBox(height: 24),
@@ -360,7 +369,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             ),
-            // SliverFillRemaining untuk List Log agar menyesuaikan sisa tinggi layar
             SliverFillRemaining(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
