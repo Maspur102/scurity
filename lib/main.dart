@@ -405,4 +405,166 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                           const SizedBox(height: 15),
                           Text(
-                            isConnected ? (isSystemArmed ? 'ARMED / AKTIF' : 'DISARMED / NONAKTIF') : 'SISTEM OF
+                            isConnected ? (isSystemArmed ? 'ARMED / AKTIF' : 'DISARMED / NONAKTIF') : 'SISTEM OFFLINE',
+                            style: TextStyle(
+                              fontSize: 22, 
+                              fontWeight: FontWeight.w800, 
+                              color: isConnected ? (isSystemArmed ? Colors.green : Colors.red) : Colors.grey,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            'Broker Status: $connectionState',
+                            style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.4)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 85,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surface,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: colorScheme.onSurface.withOpacity(0.05)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.wb_sunny_rounded, size: 16, color: isConnected ? Colors.amber[600] : Colors.grey),
+                                    const SizedBox(width: 6),
+                                    Text('CAHAYA', style: TextStyle(fontSize: 10, color: colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(isConnected ? cahayaStatus : 'Offline', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        
+                        Expanded(
+                          child: Container(
+                            height: 85,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surface,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: colorScheme.onSurface.withOpacity(0.05)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.directions_walk_rounded, size: 16, color: isConnected ? Colors.blueAccent : Colors.grey),
+                                    const SizedBox(width: 6),
+                                    Text('PIR SENSOR', style: TextStyle(fontSize: 10, color: colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Expanded(
+                                  child: isConnected
+                                      ? (_isMotionActive
+                                          ? AnimatedAlign(
+                                              alignment: _runRight ? Alignment.centerRight : Alignment.centerLeft,
+                                              duration: const Duration(milliseconds: 300),
+                                              child: const Icon(Icons.directions_run_rounded, color: Colors.redAccent, size: 28),
+                                            )
+                                          : const Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: Text('Aman', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green)),
+                                            ))
+                                      : const Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: Text('Offline', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                        ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 30),
+
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildCircularButton(title: 'ARM', icon: Icons.lock_outline_rounded, activeColor: Colors.green, isArmButton: true),
+                        _buildCircularButton(title: 'DISARM', icon: Icons.lock_open_rounded, activeColor: Colors.red, isArmButton: false),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    Text('LOG KONSOL AKTIVITAS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1, color: colorScheme.onSurface.withOpacity(0.6))),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              ),
+            ),
+            SliverFillRemaining(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF05070A) : Colors.grey[200],
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: logs.isEmpty
+                      ? Center(child: Text('Belum ada log aktivitas dari ESP32', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.3), fontSize: 13)))
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(16),
+                          itemCount: logs.length,
+                          itemBuilder: (context, index) {
+                            final log = logs[index];
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6.0),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('[${log['time']}] ', style: TextStyle(fontFamily: 'monospace', color: colorScheme.onSurface.withOpacity(0.4), fontSize: 12)),
+                                  Expanded(
+                                    child: Text(
+                                      log['msg'],
+                                      style: TextStyle(
+                                        fontFamily: 'monospace',
+                                        fontSize: 12,
+                                        fontWeight: log['isAlert'] ? FontWeight.bold : FontWeight.normal,
+                                        color: log['isAlert'] ? Colors.redAccent : (isDark ? Colors.greenAccent : Colors.black87),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    client.disconnect();
+    _audioPlayer.dispose(); // Wajib membersihkan memori player
+    _motionTimer?.cancel();
+    _runTimer?.cancel();
+    super.dispose();
+  }
+}
