@@ -3,9 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
-// Import package baru
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
+// Import package shared_preferences
+import 'package:shared_preferences/shared_preferences.dart';
 
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
@@ -78,7 +79,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Timer? _runTimer;
   bool _isAlertDialogOpen = false;
 
-  // Variabel untuk Audio Player
   final AudioPlayer _audioPlayer = AudioPlayer();
   String? _customAlarmPath;
 
@@ -87,23 +87,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _loadSavedData(); // Panggil data yang tersimpan saat aplikasi baru dibuka
     _connectMqtt();
   }
 
-  // --- FUNGSI UNTUK MEMILIH FILE MP3 DARI HP ---
+  // --- FUNGSI MENGAMBIL DATA MP3 YANG TERSIMPAN ---
+  Future<void> _loadSavedData() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      // Ambil path MP3 yang disimpan, jika tidak ada kembalikan null
+      _customAlarmPath = prefs.getString('alarm_mp3_path');
+    });
+  }
+
+  // --- FUNGSI MEMILIH DAN MENYIMPAN MP3 SECARA PERMANEN ---
   Future<void> _pickCustomAlarm() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.audio, // Hanya izinkan file audio/mp3
+      type: FileType.audio,
     );
 
-    if (result != null) {
+    if (result != null && result.files.single.path != null) {
+      String selectedPath = result.files.single.path!;
+      
+      // Simpan path tersebut ke memori HP
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('alarm_mp3_path', selectedPath);
+
       setState(() {
-        _customAlarmPath = result.files.single.path;
+        _customAlarmPath = selectedPath;
       });
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Suara Alarm Berhasil Dipilih: ${result.files.single.name}'),
+            content: Text('Suara Alarm Berhasil Disimpan: ${result.files.single.name}'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
           ),
@@ -203,16 +220,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  // --- FUNGSI MOCKUP PENYUSUP DENGAN AUDIO ---
   void _showIntruderAlert() async {
     _isAlertDialogOpen = true;
 
-    // Memutar MP3 jika pengguna sudah memilih file
     if (_customAlarmPath != null) {
-      await _audioPlayer.setReleaseMode(ReleaseMode.loop); // Mode berulang/loop
+      await _audioPlayer.setReleaseMode(ReleaseMode.loop); 
       await _audioPlayer.play(DeviceFileSource(_customAlarmPath!));
     } else {
-      // Jika belum milih MP3, beri peringatan kecil di bawah
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Penyusup terdeteksi! (Pilih MP3 di pojok kanan atas untuk suara alarm)')),
       );
@@ -251,7 +265,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onPressed: () {
                 Navigator.of(context).pop();
                 _isAlertDialogOpen = false;
-                _audioPlayer.stop(); // MATIKAN MP3 SAAT TOMBOL DITEKAN
+                _audioPlayer.stop(); 
               },
               child: const Text('TUTUP ALARM', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             )
@@ -260,7 +274,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       },
     ).then((_) {
       _isAlertDialogOpen = false;
-      _audioPlayer.stop(); // Memastikan audio mati jika dialog dipaksa tutup
+      _audioPlayer.stop(); 
     });
   }
 
@@ -328,7 +342,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         elevation: 0,
         backgroundColor: Colors.transparent,
         actions: [
-          // TOMBOL PILIH MP3 ALARM KUSTOM
           IconButton(
             icon: Icon(
               Icons.library_music_rounded, 
@@ -562,7 +575,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     client.disconnect();
-    _audioPlayer.dispose(); // Wajib membersihkan memori player
+    _audioPlayer.dispose(); 
     _motionTimer?.cancel();
     _runTimer?.cancel();
     super.dispose();
