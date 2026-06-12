@@ -22,7 +22,6 @@ class ScurityApp extends StatelessWidget {
           title: 'Scurity Smart Home',
           debugShowCheckedModeBanner: false,
           themeMode: currentMode,
-          // Tema Terang
           theme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.light,
@@ -34,7 +33,6 @@ class ScurityApp extends StatelessWidget {
             ),
             scaffoldBackgroundColor: const Color(0xFFF8F9FA),
           ),
-          // Tema Gelap
           darkTheme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.dark,
@@ -68,8 +66,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String cahayaStatus = 'Memuat...';
   List<Map<String, dynamic>> logs = [];
 
+  // Variabel untuk animasi skala tombol membal
   double _armScale = 1.0;
   double _disarmScale = 1.0;
+
+  // Variabel untuk Animasi Gerakan Manusia & Peringatan
+  bool _isMotionActive = false;
+  bool _runRight = true;
+  Timer? _motionTimer;
+  Timer? _runTimer;
+  bool _isAlertDialogOpen = false;
 
   bool get isConnected => connectionState == 'Terhubung';
 
@@ -86,7 +92,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     String clientId = 'app_scurity_${DateTime.now().millisecond}';
     
-    // --- PERBAIKAN FATAL: Menambahkan ws:// dan /mqtt ---
+    // Koneksi menggunakan WebSocket agar lolos sensor ISP
     client = MqttServerClient('ws://broker.hivemq.com/mqtt', clientId);
     client.useWebSocket = true; 
     client.port = 8000;         
@@ -106,30 +112,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       if (mounted) setState(() => connectionState = 'Menghubungkan...');
       await client.connect();
-    } on SocketException catch (e) {
-      if (mounted) {
-        setState(() => connectionState = 'Diblokir Jaringan');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Koneksi ditolak jaringan! Coba ganti antara WiFi atau Data Seluler.'),
-            backgroundColor: Colors.orange,
-            duration: Duration(seconds: 5),
-          ),
-        );
-      }
+    } on SocketException catch (_) {
+      if (mounted) setState(() => connectionState = 'Diblokir Jaringan');
       client.disconnect();
       return;
     } catch (e) {
-      if (mounted) {
-        setState(() => connectionState = 'Gagal Terhubung');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error Detail: $e'),
-            backgroundColor: Colors.redAccent,
-            duration: const Duration(seconds: 10),
-          ),
-        );
-      }
+      if (mounted) setState(() => connectionState = 'Gagal Terhubung');
       client.disconnect();
       return;
     }
@@ -159,8 +147,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
               });
               if (logs.length > 30) logs.removeLast();
 
-              if (payload == "SYSTEM ARMED") isSystemArmed = true;
-              if (payload == "SYSTEM DISARMED") isSystemArmed = false;
+              // Deteksi Logika Penyusup & Animasi Gerakan
+              if (payload.contains("SYSTEM ARMED")) isSystemArmed = true;
+              if (payload.contains("SYSTEM DISARMED")) isSystemArmed = false;
+
+              if (payload.contains("GERAKAN TERDETEKSI")) {
+                _triggerMotionAnimation();
+              }
+
+              if (isAlert && !_isAlertDialogOpen) {
+                _showIntruderAlert();
+              }
             }
           });
         }
@@ -168,17 +165,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  void _publishControl(String mode) {
-    if (!isConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Koneksi terputus! Tarik layar ke bawah untuk memuat ulang.'),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
-      return;
-    }
+  // Fungsi menjalankan animasi orang berlari bolak-balik
+  void _triggerMotionAnimation() {
+    setState(() => _isMotionActive = true);
+    
+    _runTimer?.cancel();
+    _runTimer = Timer.periodic(const Duration(milliseconds: 300), (timer) {
+      if (mounted) setState(() => _runRight = !_runRight);
+    });
 
+    _motionTimer?.cancel();
+    _motionTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) {
+        setState(() => _isMotionActive = false);
+        _runTimer?.cancel();
+      }
+    });
+  }
+
+  // Fungsi menampilkan layar peringatan merah (Mockup Penyusup)
+  void _showIntruderAlert() {
+    _isAlertDialogOpen = true;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.redAccent.withOpacity(0.8), // Latar belakang merah menyala
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: Colors.red[900],
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Column(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.yellowAccent, size: 90),
+              SizedBox(height: 10),
+              Text('AWAS PENYUSUP!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 28, letterSpacing: 1)),
+            ],
+          ),
+          content: const Text(
+            'Sensor PIR mendeteksi pergerakan di area dalam kondisi gelap/Armed. Harap periksa keamanan segera!',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white, fontSize: 16),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.red[900],
+                padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+              ),
+              onPressed: () {
+                Navigator.of(context).pop();
+                _isAlertDialogOpen = false;
+              },
+              child: const Text('TUTUP ALARM', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            )
+          ],
+        );
+      },
+    ).then((_) => _isAlertDialogOpen = false);
+  }
+
+  void _publishControl(String mode) {
+    if (!isConnected) return;
     final builder = MqttClientPayloadBuilder();
     builder.addString(mode);
     client.publishMessage('sistem/control', MqttQos.atLeastOnce, builder.payload!);
@@ -187,7 +236,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  Widget _buildAnimatedButton({
+  // Widget Tombol Bulat dengan Animasi Membal
+  Widget _buildCircularButton({
     required String title,
     required IconData icon,
     required Color activeColor,
@@ -195,41 +245,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }) {
     Color buttonColor = isConnected ? activeColor : Colors.grey[500]!;
     
-    return Expanded(
-      child: GestureDetector(
-        onTapDown: (_) => setState(() => isArmButton ? _armScale = 0.93 : _disarmScale = 0.93),
-        onTapUp: (_) {
-          setState(() => isArmButton ? _armScale = 1.0 : _disarmScale = 1.0);
-          _publishControl(isArmButton ? 'on' : 'off');
-        },
-        onTapCancel: () => setState(() => isArmButton ? _armScale = 1.0 : _disarmScale = 1.0),
-        child: AnimatedScale(
-          scale: isArmButton ? _armScale : _disarmScale,
-          duration: const Duration(milliseconds: 100),
-          curve: Curves.easeInOut,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            padding: const EdgeInsets.symmetric(vertical: 18),
-            decoration: BoxDecoration(
-              color: buttonColor,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: isConnected
-                  ? [BoxShadow(color: activeColor.withOpacity(0.3), blurRadius: 12, offset: const Offset(0, 5))]
-                  : [],
-            ),
-            child: Center(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                ],
+    return Column(
+      children: [
+        GestureDetector(
+          onTapDown: (_) => setState(() => isArmButton ? _armScale = 0.85 : _disarmScale = 0.85),
+          onTapUp: (_) {
+            setState(() => isArmButton ? _armScale = 1.0 : _disarmScale = 1.0);
+            _publishControl(isArmButton ? 'on' : 'off');
+          },
+          onTapCancel: () => setState(() => isArmButton ? _armScale = 1.0 : _disarmScale = 1.0),
+          child: AnimatedScale(
+            scale: isArmButton ? _armScale : _disarmScale,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOutBack, // Memberikan efek membal
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: buttonColor,
+                shape: BoxShape.circle, // Membuatnya bulat penuh
+                boxShadow: isConnected
+                    ? [BoxShadow(color: activeColor.withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 8))]
+                    : [],
               ),
+              child: Icon(icon, color: Colors.white, size: 36),
             ),
           ),
         ),
-      ),
+        const SizedBox(height: 12),
+        Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, letterSpacing: 1, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8))),
+      ],
     );
   }
 
@@ -240,7 +286,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SCURITY OS', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5, fontSize: 20)),
+        // Menghapus tulisan "OS"
+        title: const Text('SCURITY', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 2.0, fontSize: 22)),
         centerTitle: false,
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -274,6 +321,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(height: 10),
+                    // Kartu Status Utama
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 400),
                       padding: const EdgeInsets.all(24),
@@ -330,34 +378,92 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: colorScheme.surface,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: colorScheme.onSurface.withOpacity(0.05)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.wb_sunny_rounded, color: isConnected ? Colors.amber[600] : Colors.grey),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('INTENSITAS CAHAYA', style: TextStyle(fontSize: 10, color: colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.bold)),
-                              Text(isConnected ? cahayaStatus : 'Offline', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                            ],
-                          )
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
+                    // Baris 2 Kartu Sensor (LDR & PIR)
                     Row(
                       children: [
-                        _buildAnimatedButton(title: 'ARM SYSTEM', icon: Icons.lock_outline_rounded, activeColor: Colors.green, isArmButton: true),
+                        // KARTU LDR (Cahaya)
+                        Expanded(
+                          child: Container(
+                            height: 85,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surface,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: colorScheme.onSurface.withOpacity(0.05)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.wb_sunny_rounded, size: 16, color: isConnected ? Colors.amber[600] : Colors.grey),
+                                    const SizedBox(width: 6),
+                                    Text('CAHAYA', style: TextStyle(fontSize: 10, color: colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(isConnected ? cahayaStatus : 'Offline', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                              ],
+                            ),
+                          ),
+                        ),
                         const SizedBox(width: 12),
-                        _buildAnimatedButton(title: 'DISARM SYSTEM', icon: Icons.lock_open_rounded, activeColor: Colors.red, isArmButton: false),
+                        
+                        // KARTU PIR (Sensor Gerak dengan Animasi)
+                        Expanded(
+                          child: Container(
+                            height: 85,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surface,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: colorScheme.onSurface.withOpacity(0.05)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.directions_walk_rounded, size: 16, color: isConnected ? Colors.blueAccent : Colors.grey),
+                                    const SizedBox(width: 6),
+                                    Text('PIR SENSOR', style: TextStyle(fontSize: 10, color: colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                // Animasi berubah tergantung status gerakan
+                                Expanded(
+                                  child: isConnected
+                                      ? (_isMotionActive
+                                          ? AnimatedAlign(
+                                              alignment: _runRight ? Alignment.centerRight : Alignment.centerLeft,
+                                              duration: const Duration(milliseconds: 300),
+                                              child: const Icon(Icons.directions_run_rounded, color: Colors.redAccent, size: 28),
+                                            )
+                                          : const Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: Text('Aman', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green)),
+                                            ))
+                                      : const Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: Text('Offline', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                        ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 30),
+
+                    // Baris Tombol Bulat
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildCircularButton(title: 'ARM', icon: Icons.lock_outline_rounded, activeColor: Colors.green, isArmButton: true),
+                        _buildCircularButton(title: 'DISARM', icon: Icons.lock_open_rounded, activeColor: Colors.red, isArmButton: false),
                       ],
                     ),
                     const SizedBox(height: 24),
@@ -417,6 +523,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     client.disconnect();
+    _motionTimer?.cancel();
+    _runTimer?.cancel();
     super.dispose();
   }
 }
