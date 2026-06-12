@@ -3,6 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
+// Import package baru
+import 'package:audioplayers/audioplayers.dart';
+import 'package:file_picker/file_picker.dart';
 
 final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
@@ -66,16 +69,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String cahayaStatus = 'Memuat...';
   List<Map<String, dynamic>> logs = [];
 
-  // Variabel untuk animasi skala tombol membal
   double _armScale = 1.0;
   double _disarmScale = 1.0;
 
-  // Variabel untuk Animasi Gerakan Manusia & Peringatan
   bool _isMotionActive = false;
   bool _runRight = true;
   Timer? _motionTimer;
   Timer? _runTimer;
   bool _isAlertDialogOpen = false;
+
+  // Variabel untuk Audio Player
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  String? _customAlarmPath;
 
   bool get isConnected => connectionState == 'Terhubung';
 
@@ -85,14 +90,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _connectMqtt();
   }
 
+  // --- FUNGSI UNTUK MEMILIH FILE MP3 DARI HP ---
+  Future<void> _pickCustomAlarm() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.audio, // Hanya izinkan file audio/mp3
+    );
+
+    if (result != null) {
+      setState(() {
+        _customAlarmPath = result.files.single.path;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Suara Alarm Berhasil Dipilih: ${result.files.single.name}'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _connectMqtt() async {
     if (_isClientInitialized && client.connectionStatus?.state == MqttConnectionState.connected) {
       client.disconnect();
     }
 
     String clientId = 'app_scurity_${DateTime.now().millisecond}';
-    
-    // Koneksi menggunakan WebSocket agar lolos sensor ISP
     client = MqttServerClient('ws://broker.hivemq.com/mqtt', clientId);
     client.useWebSocket = true; 
     client.port = 8000;         
@@ -103,10 +128,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) setState(() => connectionState = 'Terputus (Disconnected)');
     };
 
-    final connMess = MqttConnectMessage()
-        .withClientIdentifier(clientId)
-        .startClean();
-        
+    final connMess = MqttConnectMessage().withClientIdentifier(clientId).startClean();
     client.connectionMessage = connMess;
 
     try {
@@ -147,7 +169,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               });
               if (logs.length > 30) logs.removeLast();
 
-              // Deteksi Logika Penyusup & Animasi Gerakan
               if (payload.contains("SYSTEM ARMED")) isSystemArmed = true;
               if (payload.contains("SYSTEM DISARMED")) isSystemArmed = false;
 
@@ -165,7 +186,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // Fungsi menjalankan animasi orang berlari bolak-balik
   void _triggerMotionAnimation() {
     setState(() => _isMotionActive = true);
     
@@ -183,13 +203,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  // Fungsi menampilkan layar peringatan merah (Mockup Penyusup)
-  void _showIntruderAlert() {
+  // --- FUNGSI MOCKUP PENYUSUP DENGAN AUDIO ---
+  void _showIntruderAlert() async {
     _isAlertDialogOpen = true;
+
+    // Memutar MP3 jika pengguna sudah memilih file
+    if (_customAlarmPath != null) {
+      await _audioPlayer.setReleaseMode(ReleaseMode.loop); // Mode berulang/loop
+      await _audioPlayer.play(DeviceFileSource(_customAlarmPath!));
+    } else {
+      // Jika belum milih MP3, beri peringatan kecil di bawah
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Penyusup terdeteksi! (Pilih MP3 di pojok kanan atas untuk suara alarm)')),
+      );
+    }
+
+    if (!mounted) return;
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      barrierColor: Colors.redAccent.withOpacity(0.8), // Latar belakang merah menyala
+      barrierColor: Colors.redAccent.withOpacity(0.8),
       builder: (BuildContext context) {
         return AlertDialog(
           backgroundColor: Colors.red[900],
@@ -217,13 +251,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onPressed: () {
                 Navigator.of(context).pop();
                 _isAlertDialogOpen = false;
+                _audioPlayer.stop(); // MATIKAN MP3 SAAT TOMBOL DITEKAN
               },
               child: const Text('TUTUP ALARM', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             )
           ],
         );
       },
-    ).then((_) => _isAlertDialogOpen = false);
+    ).then((_) {
+      _isAlertDialogOpen = false;
+      _audioPlayer.stop(); // Memastikan audio mati jika dialog dipaksa tutup
+    });
   }
 
   void _publishControl(String mode) {
@@ -236,7 +274,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  // Widget Tombol Bulat dengan Animasi Membal
   Widget _buildCircularButton({
     required String title,
     required IconData icon,
@@ -257,14 +294,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: AnimatedScale(
             scale: isArmButton ? _armScale : _disarmScale,
             duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOutBack, // Memberikan efek membal
+            curve: Curves.easeOutBack,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),
               width: 80,
               height: 80,
               decoration: BoxDecoration(
                 color: buttonColor,
-                shape: BoxShape.circle, // Membuatnya bulat penuh
+                shape: BoxShape.circle,
                 boxShadow: isConnected
                     ? [BoxShadow(color: activeColor.withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 8))]
                     : [],
@@ -286,12 +323,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        // Menghapus tulisan "OS"
         title: const Text('SCURITY', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 2.0, fontSize: 22)),
         centerTitle: false,
         elevation: 0,
         backgroundColor: Colors.transparent,
         actions: [
+          // TOMBOL PILIH MP3 ALARM KUSTOM
+          IconButton(
+            icon: Icon(
+              Icons.library_music_rounded, 
+              color: _customAlarmPath != null ? Colors.green : (isDark ? Colors.white70 : Colors.black54)
+            ),
+            tooltip: 'Pilih Suara Alarm MP3',
+            onPressed: _pickCustomAlarm,
+          ),
           IconButton(
             icon: Icon(isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded),
             onPressed: () {
@@ -321,7 +366,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const SizedBox(height: 10),
-                    // Kartu Status Utama
                     AnimatedContainer(
                       duration: const Duration(milliseconds: 400),
                       padding: const EdgeInsets.all(24),
@@ -361,170 +405,4 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                           const SizedBox(height: 15),
                           Text(
-                            isConnected ? (isSystemArmed ? 'ARMED / AKTIF' : 'DISARMED / NONAKTIF') : 'SISTEM OFFLINE',
-                            style: TextStyle(
-                              fontSize: 22, 
-                              fontWeight: FontWeight.w800, 
-                              color: isConnected ? (isSystemArmed ? Colors.green : Colors.red) : Colors.grey,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            'Broker Status: $connectionState',
-                            style: TextStyle(fontSize: 12, color: colorScheme.onSurface.withOpacity(0.4)),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Baris 2 Kartu Sensor (LDR & PIR)
-                    Row(
-                      children: [
-                        // KARTU LDR (Cahaya)
-                        Expanded(
-                          child: Container(
-                            height: 85,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surface,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: colorScheme.onSurface.withOpacity(0.05)),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(Icons.wb_sunny_rounded, size: 16, color: isConnected ? Colors.amber[600] : Colors.grey),
-                                    const SizedBox(width: 6),
-                                    Text('CAHAYA', style: TextStyle(fontSize: 10, color: colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.bold)),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Text(isConnected ? cahayaStatus : 'Offline', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        
-                        // KARTU PIR (Sensor Gerak dengan Animasi)
-                        Expanded(
-                          child: Container(
-                            height: 85,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surface,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: colorScheme.onSurface.withOpacity(0.05)),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(Icons.directions_walk_rounded, size: 16, color: isConnected ? Colors.blueAccent : Colors.grey),
-                                    const SizedBox(width: 6),
-                                    Text('PIR SENSOR', style: TextStyle(fontSize: 10, color: colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.bold)),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                // Animasi berubah tergantung status gerakan
-                                Expanded(
-                                  child: isConnected
-                                      ? (_isMotionActive
-                                          ? AnimatedAlign(
-                                              alignment: _runRight ? Alignment.centerRight : Alignment.centerLeft,
-                                              duration: const Duration(milliseconds: 300),
-                                              child: const Icon(Icons.directions_run_rounded, color: Colors.redAccent, size: 28),
-                                            )
-                                          : const Align(
-                                              alignment: Alignment.centerLeft,
-                                              child: Text('Aman', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green)),
-                                            ))
-                                      : const Align(
-                                          alignment: Alignment.centerLeft,
-                                          child: Text('Offline', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                                        ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 30),
-
-                    // Baris Tombol Bulat
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _buildCircularButton(title: 'ARM', icon: Icons.lock_outline_rounded, activeColor: Colors.green, isArmButton: true),
-                        _buildCircularButton(title: 'DISARM', icon: Icons.lock_open_rounded, activeColor: Colors.red, isArmButton: false),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-
-                    Text('LOG KONSOL AKTIVITAS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1, color: colorScheme.onSurface.withOpacity(0.6))),
-                    const SizedBox(height: 8),
-                  ],
-                ),
-              ),
-            ),
-            SliverFillRemaining(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF05070A) : Colors.grey[200],
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: logs.isEmpty
-                      ? Center(child: Text('Belum ada log aktivitas dari ESP32', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.3), fontSize: 13)))
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: logs.length,
-                          itemBuilder: (context, index) {
-                            final log = logs[index];
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 6.0),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('[${log['time']}] ', style: TextStyle(fontFamily: 'monospace', color: colorScheme.onSurface.withOpacity(0.4), fontSize: 12)),
-                                  Expanded(
-                                    child: Text(
-                                      log['msg'],
-                                      style: TextStyle(
-                                        fontFamily: 'monospace',
-                                        fontSize: 12,
-                                        fontWeight: log['isAlert'] ? FontWeight.bold : FontWeight.normal,
-                                        color: log['isAlert'] ? Colors.redAccent : (isDark ? Colors.greenAccent : Colors.black87),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    client.disconnect();
-    _motionTimer?.cancel();
-    _runTimer?.cancel();
-    super.dispose();
-  }
-}
+                            isConnected ? (isSystemArmed ? 'ARMED / AKTIF' : 'DISARMED / NONAKTIF') : 'SISTEM OF
